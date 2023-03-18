@@ -1,0 +1,111 @@
+slotIntervalInSeconds: 900
+
+emu_measurement_powerQuantPU: 100
+smartmeter_powerQuantPU: 100
+emu_control_powerQuantPU: 100
+minPowerDemandInW: 0
+maxPowerDemandInW: 100
+batteryRatedPower: 200
+
+limit_y_range_to_x_range: 1
+
+batteryRatedCapacityInAh: 1.1
+bat_power_scaling_factor: 2
+batteryNominalVoltage: 48
+reward_amplifying_factor: 1
+
+cell_SOC_high: 0.9
+cell_SOC_low: 0.1
+cell_SOC_init: 0.1
+cell_voltage_high: 4.2
+cell_voltage_low: 2.5
+cell_nominalVoltage: 4
+converterEfficiency: 95
+cell_1C_capacityInAh: 1.8048
+allowedRelativeCapacityChange: 20
+capacityCostPerkWh: 130
+
+cell_mean_power_loss_param: 320.74
+beta_max_var: 0.1
+min_alpha_plus_beta: 0.1
+ess_extreme_prob_fact: 0.1
+ess_extreme_prob_range_num: 2
+
+applianceGroupsNum: 1
+hypothesisStatesPerAppliance: [2]
+costPerApplianceDetection_emu : [1]
+rewardPerApplianceDetection_adv : [1]
+homogeneous_reward : 0
+
+applianceGroup1: ['stove']
+
+applianceGroup1Threshold: [10]
+controlStartTime: 0
+controlEndTime: 24
+
+P_XgH_h1_param: 0.05
+P_XgH_h2_param: 0.85
+
+batteryLevelsNum: 1
+
+hypothesisStatesNum: 2
+
+paramsPrecision: 1e-6
+beliefSpacePrecision_adv: 1e-6
+minLikelihoodFilter: 1e-4
+discountFactor: 0.9
+
+doPruning: 0
+max_num_gamma_vectors: 1e6
+
+minDet: 1e-5
+gamma_vec_conv_threshold: 1e-6
+max_num_EMUsubpolicies_opt: 12
+max_num_EMUsubpolicies_subopt: 12
+max_cache_size: 1e4
+
+max_valueFnIterations: 300
+beliefSpacePrecision_EMU_subopt_DBS: 0.2
+value_iter_conv_threshold: 1e-1
+
+numTrainHorizons: 2000
+exploration_epsilon: 0.03
+noise_epsilon: 0.03
+TargetSmoothFactor_C: 0.2
+TargetSmoothFactor_Ac: 0.005
+
+learning_rate_Ac: 0.001
+learning_rate_C: 0.001
+discountFactor_rl: 0.99
+
+actor_net_hidden_layers : 3
+actor_net_hidden_layer_neurons_ratio: 0.5
+critic_net_hidden_layers : 3
+critic_net_hidden_layer_neurons_ratio: 0.5
+
+GradientDecayFactor_Ac: 0.9
+SquaredGradientDecayFactor_Ac: 0.9990
+Epsilon_adam_Ac: 1e-8
+
+GradientDecayFactor_C: 0.9
+SquaredGradientDecayFactor_C: 0.9990
+Epsilon_adam_C: 1e-8
+
+MiniBatchSize: 64
+InMemoryUpdateInterval: 0
+ReplayBufferLength: 1e4
+penalty_factor: 0
+
+logistic_param_limit: 10
+y_num_for_exploration: 1
+num_rand_adv_strats_for_exploration: 10
+
+NC: 1
+inst_opt_FDC: 1
+opt_det_subpolicy_FDC: 0
+subopt_det_subpolicy_FDC: 1
+subopt_DBS_FDC: 1
+RL_DeterministicActorCriticAgent: 1
+RL_DeterministicActorCriticAgent_RD: 0
+
+subopt_DBS_FDC_UA: 1

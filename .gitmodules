@@ -1,0 +1,6 @@
+[submodule "utils/submodules/yalmip"]
+	path = utils/submodules/yalmip
+	url = https://github.com/yalmip/YALMIP
+[submodule "utils/submodules/yaml"]
+	path = utils/submodules/yaml
+	url = https://github.com/MartinKoch123/yaml

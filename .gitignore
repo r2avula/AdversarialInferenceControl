@@ -1,0 +1,24 @@
+# List of untracked files to ignore
+.git/
+*.MATLABDriveTag*
+
+utils/submodules/
+
+# Windows default autosave extension
+*.asv
+
+# OSX / *nix default autosave extension
+*.m~
+
+# Compiled MEX binaries (all platforms)
+*.mex*
+
+# Simulink Code Generation
+slprj/
+
+# Session info
+octave-workspace
+
+# Simulink autosave extension
+.autosave
+.asv
