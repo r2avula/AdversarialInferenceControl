@@ -14,7 +14,7 @@ classdef SmartGridUserEnv_FD < handle
         P_AgU_YcAkn1
     end
 
-    properties(Access = protected)
+    properties
         % Initialize internal flag to indicate episode termination
         IsDone = false
         k_idx
@@ -44,10 +44,10 @@ classdef SmartGridUserEnv_FD < handle
 
             env.ExperienceStructFieldNames      = ExperienceStructFieldNames;
             env.Params = params;
+            env.Params.useparpool = false;
+            env.Params.Function_handles = function_handles;
             env.Params.valid_XgYZn1 = pp_data.valid_XgYZn1;  
             env.Params.valid_YgXZn1 = pp_data.valid_YgXZn1;  
-            env.P_AgU_YcAkn1 = pp_data.P_AgU_YcAkn1;  
-            env.Params.Function_handles = function_handles;
             env.Params.DRs_in_Rn = getDecisionRegionPolyhedrons(params,false);
             env.in_training_mode = in_training_mode;
             env.AgentClassString_or_Action2SubPolicyFcn = agentClassString_or_Action2SubPolicyFcn;
@@ -61,12 +61,14 @@ classdef SmartGridUserEnv_FD < handle
             if env.in_training_mode
                 preprocessParamsForTrainingFcn =@(varargin) feval(strcat(agentClassString_or_Action2SubPolicyFcn, ".preprocessParamsForTraining"), varargin{:});
                 [env.Params] = preprocessParamsForTrainingFcn(env.Params);
+                env.P_AgU_YcAkn1 = [];
+            else
+                env.P_AgU_YcAkn1 = pp_data.P_AgU_YcAkn1;
             end
-
             reset(env);
         end
 
-        function P_A0_ = reset(env)
+        function initial_observation = reset(env)
             params = env.Params;
             function_handles = params.Function_handles;
             a_num = params.a_num;
@@ -92,12 +94,15 @@ classdef SmartGridUserEnv_FD < handle
             if env.in_training_mode
                 s_0_idx = env.generate_S([], env.z0_idx);
                 env.state = {P_A0_, s_0_idx};
+                initial_observation = [P_A0_;1];
+            else
+                initial_observation = P_A0_;
             end
 
             env.k_idx = 1;
         end
 
-        function [P_Ak, Reward, IsDone, LoggedSignals] = step(env, action, actionInfo)
+        function [next_observation, Reward, IsDone, LoggedSignals] = step(env, action, actionInfo)
             LoggedSignals = struct;
 
             params = env.Params;
@@ -111,15 +116,14 @@ classdef SmartGridUserEnv_FD < handle
             else
                 if isa(env.AgentClassString_or_Action2SubPolicyFcn, "string") || isa(env.AgentClassString_or_Action2SubPolicyFcn, "char")
                     action2SubPolicyFcn =@(varargin) feval(strcat(env.AgentClassString_or_Action2SubPolicyFcn, ".conAction2SubPolicy"), varargin{:});
-                    [P_Uk] = action2SubPolicyFcn(params, action, actionInfo);
+                    [P_Uk] = action2SubPolicyFcn(params, action);
                 else
-                    [P_Uk] = feval(env.AgentClassString_or_Action2SubPolicyFcn, params, action, actionInfo);
+                    [P_Uk] = feval(env.AgentClassString_or_Action2SubPolicyFcn, params, action);
                 end
             end
             [x_k_idx_obs, h_k_idx, a_kn1_idx] = S2XHAn1(env.state{2});
-            [Zk_idx, h_k_idx, YkIdx, Dk_idx] = updateSystemState(env, x_k_idx_obs, h_k_idx, a_kn1_idx, env.state{2}, P_Uk);
-
-            [P_Aks, Hhk_idxs, P_YksgY12kn1] = env.get_possible_belief_transitions(params, env.state{1}, P_Uk, actionInfo.belief_trans_info, env.P_AgU_YcAkn1);
+            [Zk_idx, h_k_idx, YkIdx, Dk_idx, P_YksgSk] = updateSystemState(env, x_k_idx_obs, h_k_idx, a_kn1_idx, env.state{2}, P_Uk);
+            [P_Aks, Hhk_idxs, P_YksgY12kn1, P_AgU_Yc] = env.get_possible_belief_transitions(params, env.state{1}, P_Uk, actionInfo.belief_trans_info, env.P_AgU_YcAkn1);
 
             P_Ak = P_Aks{YkIdx};
             Hhk_idx = Hhk_idxs(YkIdx);
@@ -128,10 +132,44 @@ classdef SmartGridUserEnv_FD < handle
             if any(env.ExperienceStructFieldNames.matches("AdversarialRewardEstimate"))
                 LoggedSignals.AdversarialRewardEstimate = -C_HgHh_design(:, Hhk_idx)'*P_HgA*P_Ak;
             end
+
+            if any(env.ExperienceStructFieldNames.matches("MeanReward"))
+                LoggedSignals.MeanReward = sum(-C_HgHh_design(Hhk_idxs, Hhk_idx).*P_YksgSk);
+            end
+
+            if any(env.ExperienceStructFieldNames.matches("P_YksgSk"))
+                LoggedSignals.P_YksgSk = P_YksgSk;
+            end
+
+            if any(env.ExperienceStructFieldNames.matches("MeanAdversarialRewardEstimate"))
+                LoggedSignals.MeanAdversarialRewardEstimate = env.computeMeanAdversarialRewardEstimate(params, P_Aks, Hhk_idxs, P_YksgY12kn1);
+            end
 			
             if any(env.ExperienceStructFieldNames.matches("P_YksgY12kn1"))
                 LoggedSignals.P_YksgY12kn1 = P_YksgY12kn1;
             end  
+
+            if any(env.ExperienceStructFieldNames.matches("P_AgU_Yc"))
+                LoggedSignals.P_AgU_Yc = P_AgU_Yc;
+            end
+            if any(env.ExperienceStructFieldNames.matches("x_k_idx_obs"))
+                LoggedSignals.x_k_idx_obs = x_k_idx_obs;
+            end
+            if any(env.ExperienceStructFieldNames.matches("Hk_idx"))
+                LoggedSignals.Hk_idx = h_k_idx;
+            end
+            if any(env.ExperienceStructFieldNames.matches("Hhk_idx"))
+                LoggedSignals.Hhk_idx = Hhk_idx;
+            end
+            if any(env.ExperienceStructFieldNames.matches("Dk_idx"))
+                LoggedSignals.Dk_idx = Dk_idx;
+            end
+            if any(env.ExperienceStructFieldNames.matches("YkIdx"))
+                LoggedSignals.YkIdx = YkIdx;
+            end
+            if any(env.ExperienceStructFieldNames.matches("Zk_idx"))
+                LoggedSignals.Zk_idx = Zk_idx;
+            end
 
             if env.in_training_mode
                 skp1_idx = env.generate_S(h_k_idx, Zk_idx);
@@ -144,20 +182,10 @@ classdef SmartGridUserEnv_FD < handle
                 end
                 if any(env.ExperienceStructFieldNames.matches("P_Uk"))
                     LoggedSignals.P_Uk = P_Uk;
-                end
+                end       
+                next_observation = [P_Ak; YkIdx];
             else
-                if any(env.ExperienceStructFieldNames.matches("Hhk_idx"))
-                    LoggedSignals.Hhk_idx = Hhk_idx;
-                end
-                if any(env.ExperienceStructFieldNames.matches("Dk_idx"))
-                    LoggedSignals.Dk_idx = Dk_idx;
-                end
-                if any(env.ExperienceStructFieldNames.matches("YkIdx"))
-                    LoggedSignals.YkIdx = YkIdx;
-                end
-                if any(env.ExperienceStructFieldNames.matches("Zk_idx"))
-                    LoggedSignals.Zk_idx = Zk_idx;
-                end              
+                next_observation = P_Ak;
             end
 
             IsDone = env.k_idx == params.k_num;
@@ -173,11 +201,11 @@ classdef SmartGridUserEnv_FD < handle
                 if any(LoggedSignalsNames.matches(dataFieldName))
                     Exp.(dataFieldName) = LoggedSignals.(dataFieldName);
                 elseif dataFieldName == "NextObservation"
-                    Exp.NextObservation = nobs;
+                    Exp.NextObservation = {[nobs{1}(1:env.Params.a_num)]};
                 elseif dataFieldName == "Action"
                     Exp.Action = cellify(act);
                 elseif dataFieldName == "Observation"
-                    Exp.Observation = obs;
+                    Exp.Observation = {[obs{1}(1:env.Params.a_num)]};
                 elseif dataFieldName == "Reward"
                     Exp.Reward = rwd;
                 elseif dataFieldName == "IsDone"
@@ -196,7 +224,7 @@ classdef SmartGridUserEnv_FD < handle
             simulator = env.Simulator_;
         end
 
-        function [z_k_idx, h_k_idx, yc_k_idx_star, d_k_idx_star] = updateSystemState(env, x_k_idx_obs, h_k_idx, a_kn1_idx, s_k_idx, P_Uk)
+        function [z_k_idx, h_k_idx, yc_k_idx_star, d_k_idx_star, P_YksgSk] = updateSystemState(env, x_k_idx_obs, h_k_idx, a_kn1_idx, s_k_idx, P_Uk)
             params = env.Params;
             y_control_p_pu = params.y_control_p_pu;
             y_control_offset = params.y_control_offset;
@@ -214,8 +242,8 @@ classdef SmartGridUserEnv_FD < handle
 
             [~,z_kn1_idx] = A2HZ(a_kn1_idx);
 
-            yc_k_idx_star_prob = P_Uk(YcsS_2U(y_control_range,s_k_idx));
-            cumulative_distribution = cumsum(yc_k_idx_star_prob);
+            P_YksgSk = P_Uk(YcsS_2U(y_control_range,s_k_idx));
+            cumulative_distribution = cumsum(P_YksgSk);
             yc_k_idx_star = find(cumulative_distribution>=rand(),1);
             if(isempty(yc_k_idx_star))
                 error('isempty(yc_k_idx_star)');
@@ -264,27 +292,45 @@ classdef SmartGridUserEnv_FD < handle
             y_control_num = params.y_control_num;
             a_num = params.a_num;
             u_num = params.u_num;            
+            paramsPrecision = params.paramsPrecision;            
             P_AgU_Yc = cell(y_control_num,1);
             NZ_P_Akn1_idxs = find(P_Akn1>0)';
-            for Yck_idx = 1:y_control_num
-                P_AgU = sparse(a_num,u_num);
-                for Akn1_idx = NZ_P_Akn1_idxs
-                    P_AgU = P_AgU + P_AgU_YcAkn1{Yck_idx, Akn1_idx}*P_Akn1(Akn1_idx);
+            if params.useparpool
+                parfor Yck_idx = 1:y_control_num
+                    P_Akn1_ = P_Akn1;
+                    P_AgU = sparse(a_num,u_num);
+                    for Akn1_idx = NZ_P_Akn1_idxs
+                        P_AgU = P_AgU + P_AgU_YcAkn1{Yck_idx, Akn1_idx}*P_Akn1_(Akn1_idx);
+                    end
+                    P_AgU(P_AgU<paramsPrecision) = 0;
+                    P_AgU_Yc{Yck_idx} = (P_AgU);
                 end
-                P_AgU_Yc{Yck_idx} = P_AgU;
+            else
+                for Yck_idx = 1:y_control_num
+                    P_Akn1_ = P_Akn1;
+                    P_AgU = sparse(a_num,u_num);
+                    for Akn1_idx = NZ_P_Akn1_idxs
+                        P_AgU = P_AgU + P_AgU_YcAkn1{Yck_idx, Akn1_idx}*P_Akn1_(Akn1_idx);
+                    end
+                    P_AgU(P_AgU<paramsPrecision) = 0;
+                    P_AgU_Yc{Yck_idx} = (P_AgU);
+                end
             end
         end
 
-        function [P_Aks, Hhk_idxs, P_YksgY12kn1] = get_possible_belief_transitions(params, P_Akn1, P_Uk, belief_trans_info, P_AgU_YcAkn1)
+        function [P_Aks, Hhk_idxs, P_YksgY12kn1, P_AgU_Yc] = get_possible_belief_transitions(params, P_Akn1, P_Uk, belief_trans_info, P_AgU_YcAkn1)
             if isempty(belief_trans_info)
                 [P_AgU_Yc] = SmartGridUserEnv_FD.preprocess_possible_belief_transitions(params, P_AgU_YcAkn1, P_Akn1);
             elseif isfield(belief_trans_info, 'P_Aks')
                 P_Aks = belief_trans_info.P_Aks;
                 Hhk_idxs = belief_trans_info.Hhk_idxs;
                 P_YksgY12kn1 = belief_trans_info.P_YksgY12kn1;
+                P_AgU_Yc = belief_trans_info.P_AgU_Yc;
                 return;
             elseif isfield(belief_trans_info, 'P_AgU_Yc')
-                P_AgU_Yc = belief_trans_info.P_AgU_Yc;                
+                P_AgU_Yc = belief_trans_info.P_AgU_Yc;      
+            else
+                [P_AgU_Yc] = SmartGridUserEnv_FD.preprocess_possible_belief_transitions(params, P_AgU_YcAkn1, P_Akn1);
             end
             
             P_HgA= params.P_HgA;
@@ -306,8 +352,8 @@ classdef SmartGridUserEnv_FD < handle
             P_YksgY12kn1 = P_YksgY12kn1./sum(P_YksgY12kn1);
             for Yck_idx = 1:y_control_num
                 P_Ak = P_Aks{Yck_idx};
-                P_Hk_sum = P_YksgY12kn1(Yck_idx);
-                if(P_Hk_sum>=minLikelihoodFilter)
+                P_Ak_sum = P_YksgY12kn1(Yck_idx);
+                if(P_Ak_sum>=minLikelihoodFilter)
                     P_Ak = roundOffBelief_beliefSpacePrecision_fn(P_Ak);
                     Hhk_idx = get_adv_guess_g_belief_k_fn(P_HgA*P_Ak);
                     Hhk_idxs(Yck_idx) = Hhk_idx;
@@ -337,6 +383,19 @@ classdef SmartGridUserEnv_FD < handle
                 AdversarialRewardEstimates(yk_idx,:) = - sum(C_HgHh_design(:, Hhk_idxs(yk_idx,:)).*(P_HgA*P_Aks{yk_idx}),1);
             end
             MeanAdversarialRewardEstimates = sum(AdversarialRewardEstimates.*P_YksgY12kn1,1);
+        end
+
+        function [AdversarialRewardEstimates] = computeAdversarialRewardEstimates(params, experiences)
+            C_HgHh_design = params.C_HgHh_design;
+            P_HgA = params.P_HgA;
+            y_control_num = params.y_control_num;
+            Hhk_idxs = experiences.Hhk_idxs;
+            P_Aks = experiences.P_Aks;
+
+            AdversarialRewardEstimates = zeros(y_control_num,1);
+            for yk_idx = 1:y_control_num
+                AdversarialRewardEstimates(yk_idx) = -sum(C_HgHh_design(:, Hhk_idxs(yk_idx)).*(P_HgA*P_Aks{yk_idx}));
+            end            
         end
     end
 

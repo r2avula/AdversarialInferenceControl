@@ -22,7 +22,6 @@ for h_vec_idx = 1:h_num
     end
 end
 
-paramsPrecision= config.paramsPrecision;
 x_p_pu = config.emu_measurement_powerQuantPU; % in W
 y_p_pu = config.smartmeter_powerQuantPU; % in W
 d_p_pu = config.emu_measurement_powerQuantPU; % in W
@@ -123,20 +122,19 @@ z_min_pu = floor(cell_SOC_low*z_cap/emu_measurement_energyQuantPU);
 z_max_pu = floor(cell_SOC_high*z_cap/emu_measurement_energyQuantPU);
 z_num = z_max_pu-z_min_pu+1;
 
-l_num = config.batteryLevelsNum;
-z_num_per_level = floor(z_num/l_num);
-z_num = z_num_per_level*l_num;
+l_num_paramapprox = config.batteryLevelsNum_paramapprox;
+z_num_per_level_comsol = floor(z_num/l_num_paramapprox);
+z_num = z_num_per_level_comsol*l_num_paramapprox;
 z_offset = z_min_pu - 1;
-cell_SOC_high = roundOff((z_num+z_offset)*emu_measurement_energyQuantPU/z_cap,paramsPrecision);
-l_grid_boundaries = linspace(cell_SOC_low,cell_SOC_high,l_num+1);
+% cell_SOC_high = roundOff((z_num+z_offset)*emu_measurement_energyQuantPU/z_cap,paramsPrecision);
+l_grid_boundaries_comsol = linspace(cell_SOC_low,cell_SOC_high,l_num_paramapprox+1);
 
-l_grid_bin_mean = zeros(l_num,1);
-for bin_idx = 1:l_num
-    l_grid_bin_mean(bin_idx) = (l_grid_boundaries(bin_idx) + l_grid_boundaries(bin_idx+1))/2;
+l_grid_bin_mean_comsol = zeros(l_num_paramapprox,1);
+for bin_idx = 1:l_num_paramapprox
+    l_grid_bin_mean_comsol(bin_idx) = (l_grid_boundaries_comsol(bin_idx) + l_grid_boundaries_comsol(bin_idx+1))/2;
 end
 
 cell_pow_set = round(bat_pow_set/(cellsInSeries*legsInParallel),12);
-
 soc_grid_boundaries = linspace(cell_SOC_low,cell_SOC_high,z_num+1);
 soc_grid_bin_mean = zeros(z_num,1);
 for bin_idx = 1:z_num
@@ -152,14 +150,11 @@ else
     gamma = 0;
     gamma_tau = slotIntervalInHours; % in h
 end
-
-ZIdxsgLIdx = zeros(z_num_per_level,l_num);
-LIdxgZIdx = zeros(z_num,1);
-Zk_idx = 0;
-for Lk_idx = 1:l_num
-    ZIdxsgLIdx(:,Lk_idx) = Zk_idx + 1: Zk_idx + z_num_per_level;
-    LIdxgZIdx(Zk_idx + 1: Zk_idx + z_num_per_level) = Lk_idx;
-    Zk_idx = Zk_idx + z_num_per_level ;
+z_k_idxs_given_l_k_idx_comsol = cell(1, l_num_paramapprox);
+for z_k_idx=1:z_num
+    z_grid_bin_mean_ = soc_grid_bin_mean(z_k_idx);
+    l_k_idx_comsol = find(z_grid_bin_mean_<=l_grid_boundaries_comsol,1)-1;
+    z_k_idxs_given_l_k_idx_comsol{l_k_idx_comsol} = [z_k_idxs_given_l_k_idx_comsol{l_k_idx_comsol},z_k_idx];
 end
 
 % Expand Config
@@ -167,23 +162,21 @@ config.h_num = h_num;
 config.x_num = x_num;
 config.z_num = z_num;
 config.d_num = d_num;
-config.l_num = l_num;
+config.l_num_paramapprox = l_num_paramapprox;
+config.z_k_idxs_given_l_k_idx_comsol = z_k_idxs_given_l_k_idx_comsol;
 config.batteryRatedCapacityInAh = batteryRatedCapacityInAh;
 config.cell_1C_capacityInAh = cell_1C_capacityInAh;
 config.cell_nominalVoltage = cell_nominalVoltage;
-config.l_grid_boundaries = l_grid_boundaries;
+config.l_grid_boundaries_comsol = l_grid_boundaries_comsol;
 config.cell_pow_set = cell_pow_set;
 config.cell_SOC_low = cell_SOC_low;
 config.cell_SOC_high = cell_SOC_high;
-config.l_grid_bin_mean = l_grid_bin_mean;
+config.l_grid_bin_mean_comsol = l_grid_bin_mean_comsol;
 config.soc_grid_boundaries = soc_grid_boundaries;
 config.gamma = gamma;
 config.gamma_tau = gamma_tau;
-config.LIdxgZIdx = LIdxgZIdx;
-config.ZIdxsgLIdx = ZIdxsgLIdx;
 config.legsInParallel = legsInParallel;
 config.cellsInSeries = cellsInSeries;
-config.z_num_per_level = z_num_per_level;
 config.bat_pow_set = bat_pow_set;
 config.z_cap = z_cap;
 config.slotIntervalInHours = slotIntervalInHours;

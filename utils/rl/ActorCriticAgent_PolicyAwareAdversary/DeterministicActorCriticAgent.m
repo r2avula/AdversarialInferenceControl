@@ -8,27 +8,22 @@ classdef DeterministicActorCriticAgent < agents.AbstractActorCriticAgent
         trained_episodes
         optimization_params
         P_AgU_YcAkn1
-        noiseModel = []
+        useparpool = false
     end
 
     methods
-        function agent = DeterministicActorCriticAgent(actor, critic, agentOpts, params, ReplayBuffer, trained_episodes, noiseModel)
+        function agent = DeterministicActorCriticAgent(actor, critic, agentOpts, params, ReplayBuffer, trained_episodes)
             if  nargin == 4
                 ReplayBuffer = [];
                 trained_episodes = 0;
-                noiseOpts = rl.option.OrnsteinUhlenbeckActionNoise;
-                actionSize = {actor.ActionInfo.Dimension};
-                noiseModel = rl.policy.noisemodel.rlOUNoiseModel(actionSize,noiseOpts,1);
-                noiseModel.EnableStandardDeviationDecay = false;
             end
             agent = agent@agents.AbstractActorCriticAgent(actor, critic, agentOpts);
             agent.Params = params;
             if isempty(ReplayBuffer)
-                ReplayBuffer = replay.RLReplayMemory(agent.ObservationInfo,agent.ActionInfo,agent.AgentOptions.ReplayBufferLength);
+                ReplayBuffer = replay.RLReplayMemory(agent.ObservationInfo,agent.ActionInfo,agent.AgentOptions.ExperienceBufferLength);
             end
             agent.ReplayBuffer = ReplayBuffer;
             agent.trained_episodes = trained_episodes;
-            agent.noiseModel = noiseModel;
         end
 
         function q0 = evaluateQ0(agent, Observation)
@@ -36,61 +31,59 @@ classdef DeterministicActorCriticAgent < agents.AbstractActorCriticAgent
                 agent (1,1)
                 Observation cell
             end
-            action = getAction(agent.Actor, Observation);
+            action = getAction(agent.Actor, {Observation{1}(1:agent.Params.a_num)});
             q0 = getValue(agent.Critic, Observation, action)*(1-agent.Params.discountFactor);
-        end
-
-        function setP_AgU_YcAkn1(agent, P_AgU_YcAkn1)
-            agent.P_AgU_YcAkn1 = P_AgU_YcAkn1;
         end
 
         function [action, actionInfo] = getAction(agent, Observation)
             params = agent.Params;
-            P_Akn1 = Observation;
+            P_Akn1 = Observation(1:agent.Params.a_num);
             exploration_epsilon = params.exploration_epsilon;
             noise_epsilon = params.noise_epsilon;
 
             [P_AgU_Yc] = SmartGridUserEnv_FD.preprocess_possible_belief_transitions(params, agent.P_AgU_YcAkn1, P_Akn1);
             belief_trans_info.P_AgU_Yc = P_AgU_Yc;
-
             [action, actionInfo] = getAction(agent.Actor, {P_Akn1});
-
+            P_Uk = agent.conAction2SubPolicy(params,action{1});
             rand_draw = rand();
-            if rand_draw < noise_epsilon
-                [action,agent.noiseModel] = addNoise(agent.noiseModel,action);
-                [P_Uk] = agent.conAction2SubPolicy(params, action{1}, []);
-            else
-                [P_Uk] = agent.conAction2SubPolicy(params, action{1}, actionInfo);
-                [P_Aks, Hhk_idxs, P_YksgY12kn1] = SmartGridUserEnv_FD.get_possible_belief_transitions(params, P_Akn1, P_Uk, belief_trans_info, []);
-                belief_trans_info.P_Aks = P_Aks;
-                belief_trans_info.Hhk_idxs = Hhk_idxs;
-                belief_trans_info.P_YksgY12kn1 = P_YksgY12kn1;
-
-                if rand_draw < exploration_epsilon + noise_epsilon
-                    experience = struct;
-                    experience.P_Uk = P_Uk;
-                    experience.P_Aks = P_Aks;
-                    experience.Hhk_idxs = Hhk_idxs;
-                    experience.P_YksgY12kn1 = P_YksgY12kn1;
-
-                    [noisy_P_Uk, P_Aks, Hhk_idxs, P_YksgY12kn1] = agent.getRandomStrategy(P_Akn1, P_AgU_Yc, experience);
-                    if ~isempty(noisy_P_Uk)
-                        noisy_action = agent.conSubPolicy2Action(params, noisy_P_Uk);
-                        action = (action{1}+noisy_action)/2;
-                        [P_Uk] = agent.conAction2SubPolicy(params, action, []);
-                        belief_trans_info.P_Aks = P_Aks;
-                        belief_trans_info.Hhk_idxs = Hhk_idxs;
-                        belief_trans_info.P_YksgY12kn1 = P_YksgY12kn1;
+            if rand_draw < exploration_epsilon
+                [P_Uk_exploratory, belief_trans_info] = agent.getExploratoryStrategy(P_Akn1, P_AgU_Yc, P_Uk); 
+                action = agent.conSubPolicy2Action(params,P_Uk_exploratory);
+                P_Uk = P_Uk_exploratory;
+            elseif rand_draw < exploration_epsilon + noise_epsilon
+                    valid_YgXZn1 = params.valid_YgXZn1;
+                    function_handles = params.Function_handles;
+                    S2XHAn1 = function_handles.S2XHAn1;
+                    A2HZ = function_handles.A2HZ;
+                    YcsS_2U = function_handles.YcsS_2U;
+                    P_Uk_noisy = P_Uk;
+                    rand_s_idxs = randperm(params.s_num,randi(params.s_num));
+                    for s_idx = rand_s_idxs
+                        [x_k_idx, ~, a_kn1_idx] = S2XHAn1(s_idx);
+                        [~,z_kn1_idx] = A2HZ(a_kn1_idx);
+                        valid_Yidxs = valid_YgXZn1{x_k_idx, z_kn1_idx};
+                        valid_YcIdxs_num = length(valid_Yidxs);
+                        if valid_YcIdxs_num>1
+                            U_idxs = YcsS_2U(1:params.y_control_num, s_idx);
+                            P_Y = P_Uk_noisy(U_idxs);
+                            rand_y_idxs = valid_Yidxs(randperm(valid_YcIdxs_num,randi(valid_YcIdxs_num)));
+                            P_Y(rand_y_idxs) = min(max(P_Y(rand_y_idxs) + rand(length(rand_y_idxs),1)*params.noise_sd, 0),1);
+                            if sum(P_Y) > 0
+                                P_Y = P_Y./sum(P_Y);
+                                P_Uk_noisy(U_idxs) = P_Y;
+                            end
+                        end
                     end
-                end
+                    action = agent.conSubPolicy2Action(params,P_Uk_noisy);
+                    P_Uk = P_Uk_noisy;
             end
-   
             action = rl.util.cellify(action);
-            actionInfo.belief_trans_info = belief_trans_info;         
-            actionInfo.P_Uk = P_Uk;                   
+            action = {single(action{1})};
+            actionInfo.P_Uk = P_Uk;     
+            actionInfo.belief_trans_info = belief_trans_info; 
         end
 
-        function [noisy_P_Uk, P_Aks, Hhk_idxs, P_YksgY12kn1] = getRandomStrategy(agent, P_Akn1, P_AgU_Yc, experience_orig)
+        function [P_Uk,belief_trans_info] = getExploratoryStrategy(agent, P_Akn1, P_AgU_Yc, P_Uk_nnet)
             params = agent.Params;
             y_num_for_exploration = params.y_num_for_exploration;
             gurobi_model = params.gurobi_model;
@@ -99,15 +92,25 @@ classdef DeterministicActorCriticAgent < agents.AbstractActorCriticAgent
             beq_cons = params.beq_cons;
             eq_cons_num = params.eq_cons_num;
             paramsPrecision = params.paramsPrecision;
+            h_num = params.h_num;
+            a_num = params.a_num;
             minLikelihoodFilter = params.minLikelihoodFilter;
             num_rand_adv_strats_for_exploration = params.num_rand_adv_strats_for_exploration;
-            a_num = params.a_num;
             function_handles = params.Function_handles;
+            P_HgA = (params.P_HgA);
+            params.useparpool = agent.useparpool;
 
-            noisy_P_Uk = [];
-            P_Aks = [];
-            Hhk_idxs = [];
-            P_YksgY12kn1 = [];
+            belief_trans_info.P_AgU_Yc = P_AgU_Yc;
+            [P_Aks_nnet, Hhk_idxs_nnet, P_YksgY12kn1_nnet] = SmartGridUserEnv_FD.get_possible_belief_transitions(params, P_Akn1, P_Uk_nnet, belief_trans_info, []);
+            experience_nnet = struct;
+            experience_nnet.P_Uk = P_Uk_nnet;
+            experience_nnet.P_Aks = P_Aks_nnet;
+            experience_nnet.Hhk_idxs = Hhk_idxs_nnet;
+            experience_nnet.P_YksgY12kn1 = P_YksgY12kn1_nnet;
+            experience_nnet.MeanAdversarialRewardEstimate = sum(SmartGridUserEnv_FD.computeAdversarialRewardEstimates(params, experience_nnet).*...
+                                experience_nnet.P_YksgY12kn1,1);
+
+            experiences = experience_nnet;
 
             if isempty(agent.optimization_params)
                 optimization_params_ = struct;
@@ -117,6 +120,7 @@ classdef DeterministicActorCriticAgent < agents.AbstractActorCriticAgent
                 optimization_params_.beq_cons = params.beq_cons;
                 optimization_params_.eq_cons_num = params.eq_cons_num;
                 optimization_params_.DRs_in_Rn = params.DRs_in_Rn;
+                optimization_params_.with_a_nncells = params.with_a_nncells;
                 optimization_params_.u_num = params.u_num;
                 optimization_params_.C_HgHh_design = (params.C_HgHh_design);
                 optimization_params_.paramsPrecision = params.paramsPrecision;
@@ -127,15 +131,20 @@ classdef DeterministicActorCriticAgent < agents.AbstractActorCriticAgent
                 optimization_params_.y_control_num = params.y_control_num;
                 optimization_params_.a_num = params.a_num;
                 optimization_params_.discountFactor = params.discountFactor;
-                optimization_params_.function_handles = function_handles;
-                optimization_params_.a_nn_cells = get_NN_ClassifyingConstraints(eye(a_num),1);
+                optimization_params_.Function_handles = function_handles;
+                optimization_params_.useparpool = agent.useparpool;
+                if params.with_a_nncells
+                    optimization_params_.nn_cells = get_NN_ClassifyingConstraints(eye(params.a_num),1);
+                else
+                    optimization_params_.nn_cells = get_NN_ClassifyingConstraints(eye(params.h_num),1);
+                end
+                optimization_params_.U2paramIdx = params.U2paramIdx;
                 agent.optimization_params = optimization_params_;
             else
                 optimization_params_ = agent.optimization_params;
             end
-            a_nn_cells = optimization_params_.a_nn_cells;
 
-            [B,I] = sort(experience_orig.P_YksgY12kn1,'descend');
+            [B,I] = sort(experience_nnet.P_YksgY12kn1,'descend');
             filter_flag = B>=minLikelihoodFilter;
             if any(filter_flag)
                 y_idxs_for_exploration = I(filter_flag);
@@ -143,20 +152,32 @@ classdef DeterministicActorCriticAgent < agents.AbstractActorCriticAgent
                 y_num_for_exploration = min(length(y_idxs_for_exploration), y_num_for_exploration);
                 y_idxs_for_exploration = y_idxs_for_exploration(1:y_num_for_exploration);
 
-                possible_AhIdxk_g_Yck_flag = false(a_num,y_num_for_exploration);
+                nn_cells = optimization_params_.nn_cells;
+                if params.with_a_nncells
+                    possible_HhoAhIdxk_g_Yck_flag = false(a_num,y_num_for_exploration);
+                    aoh_num = a_num;
+                else
+                    possible_HhoAhIdxk_g_Yck_flag = false(h_num,y_num_for_exploration);
+                    aoh_num = h_num;
+                end
                 for Ye_idx_t = 1:y_num_for_exploration
                     Yck_idx = y_idxs_for_exploration(Ye_idx_t);
                     P_AgU = P_AgU_Yc{Yck_idx};
                     P_YcgU = sum(P_AgU,1);
                     P_YcgU_full = full(P_YcgU);
+                    if params.with_a_nncells
+                        P_AoHgU = P_AgU;
+                    else
+                        P_AoHgU = P_HgA*P_AgU;
+                    end
 
                     gurobi_model_t = gurobi_model;
                     gurobi_model_t.obj  = -P_YcgU_full;
                     gurobi_result_t = gurobi(gurobi_model_t, gurobi_model_params);
                     if strcmp(gurobi_result_t.status, 'OPTIMAL') && -gurobi_result_t.objval >= minLikelihoodFilter
-                        for Ahk_idx = 1:a_num
-                            Aineq_cons_AhIdx = a_nn_cells(Ahk_idx).A*P_AgU - a_nn_cells(Ahk_idx).b*P_YcgU;
-                            bineq_cons_AhIdx = -paramsPrecision*ones(length(a_nn_cells(Ahk_idx).b),1);
+                        for AoHhk_idx = 1:aoh_num
+                            Aineq_cons_AhIdx = nn_cells(AoHhk_idx).A*P_AoHgU - nn_cells(AoHhk_idx).b*P_YcgU;
+                            bineq_cons_AhIdx = -paramsPrecision*ones(length(nn_cells(AoHhk_idx).b),1);
 
                             Aineq_cons_t = [Aineq_cons_AhIdx;-P_YcgU];
                             bineq_cons_t = [bineq_cons_AhIdx;-(minLikelihoodFilter+paramsPrecision)];
@@ -166,61 +187,65 @@ classdef DeterministicActorCriticAgent < agents.AbstractActorCriticAgent
                             gurobi_model_t.sense =  [repmat('=',[1,eq_cons_num]),repmat('<',[1,length(bineq_cons_t)])];
                             gurobi_result_t = gurobi(gurobi_model_t, gurobi_model_params);
                             if(strcmp(gurobi_result_t.status, 'OPTIMAL'))
-                                possible_AhIdxk_g_Yck_flag(Ahk_idx,Ye_idx_t) = true;
+                                possible_HhoAhIdxk_g_Yck_flag(AoHhk_idx,Ye_idx_t) = true;
                             end
                         end
                     end
                 end
                 
-                if all(any(possible_AhIdxk_g_Yck_flag,1))
-                    possible_AhIdx_given_Yc_vecs = find(possible_AhIdxk_g_Yck_flag(:,1))';
+                if all(any(possible_HhoAhIdxk_g_Yck_flag,1))
+                    possible_AoHhIdx_given_Yc_vecs = find(possible_HhoAhIdxk_g_Yck_flag(:,1))';
                     for ye_idx = 2:y_num_for_exploration
-                        temp_idxs = find(possible_AhIdxk_g_Yck_flag(:,ye_idx))';
-                        possible_AhIdx_given_Yc_vecs = combvec(possible_AhIdx_given_Yc_vecs,temp_idxs);
+                        temp_idxs = find(possible_HhoAhIdxk_g_Yck_flag(:,ye_idx))';
+                        possible_AoHhIdx_given_Yc_vecs = combvec(possible_AoHhIdx_given_Yc_vecs,temp_idxs);
 
-                        num_possible_AhIdx_given_Yc_vecs = size(possible_AhIdx_given_Yc_vecs,2);
+                        num_possible_HhIdx_given_Yc_vecs = size(possible_AoHhIdx_given_Yc_vecs,2);
 
-                        if num_possible_AhIdx_given_Yc_vecs > num_rand_adv_strats_for_exploration
-                            strat_idxs_to_search = randperm(num_possible_AhIdx_given_Yc_vecs,num_rand_adv_strats_for_exploration);
-                            possible_AhIdx_given_Yc_vecs = possible_AhIdx_given_Yc_vecs(:, strat_idxs_to_search);
+                        if num_possible_HhIdx_given_Yc_vecs > num_rand_adv_strats_for_exploration
+                            strat_idxs_to_search = randperm(num_possible_HhIdx_given_Yc_vecs,num_rand_adv_strats_for_exploration);
+                            possible_AoHhIdx_given_Yc_vecs = possible_AoHhIdx_given_Yc_vecs(:, strat_idxs_to_search);
                         end
                     end
-                    num_possible_AhIdx_given_Yc_vecs = size(possible_AhIdx_given_Yc_vecs,2);
+                    num_possible_HhIdx_given_Yc_vecs = size(possible_AoHhIdx_given_Yc_vecs,2);
 
-                    experiences = struct;
-                    experiences.P_Uk = [];
-                    experiences.P_Aks = [];
-                    experiences.Hhk_idxs = [];
-                    experiences.P_YksgY12kn1 = [];
-                    experiences.MeanAdversarialRewardEstimate = [];
-                    [~,p_pool] = evalc('gcp(''nocreate'');');
-                    if isempty(p_pool)
-                        for AhIdx_given_Yc_vec_idx = 1:num_possible_AhIdx_given_Yc_vecs
-                            [experiences(AhIdx_given_Yc_vec_idx)] =...
-                                DeterministicActorCriticAgent.optimization_routine(optimization_params_, P_Akn1, P_AgU_Yc, y_idxs_for_exploration, possible_AhIdx_given_Yc_vecs(:,AhIdx_given_Yc_vec_idx));
+                    % start_t = tic;
+                    if agent.useparpool
+                        P_AgU_Yc = parallel.pool.Constant(P_AgU_Yc);
+                        parfor HhIdx_given_Yc_vec_idx = 1:num_possible_HhIdx_given_Yc_vecs
+                            experience_ =...
+                                DeterministicActorCriticAgent.optimization_routine(optimization_params_, P_Akn1, P_AgU_Yc, y_idxs_for_exploration, possible_AoHhIdx_given_Yc_vecs(:,HhIdx_given_Yc_vec_idx)); %#ok<*FVAL>
+                            if ~isempty(experience_.P_Uk)
+                                experience_.MeanAdversarialRewardEstimate = ...
+                                    sum(SmartGridUserEnv_FD.computeAdversarialRewardEstimates(optimization_params_, experience_).*...
+                                    experience_.P_YksgY12kn1,1);
+                            end
+                            experiences(1+HhIdx_given_Yc_vec_idx) = experience_;
                         end
                     else
-                        parfor AhIdx_given_Yc_vec_idx = 1:num_possible_AhIdx_given_Yc_vecs
-                            [experiences(AhIdx_given_Yc_vec_idx)] =...
-                                DeterministicActorCriticAgent.optimization_routine(optimization_params_, P_Akn1, P_AgU_Yc, y_idxs_for_exploration, possible_AhIdx_given_Yc_vecs(:,AhIdx_given_Yc_vec_idx)); %#ok<*FVAL>
+                        for HhIdx_given_Yc_vec_idx = 1:num_possible_HhIdx_given_Yc_vecs
+                            experience_ =...
+                                DeterministicActorCriticAgent.optimization_routine(optimization_params_, P_Akn1, P_AgU_Yc, y_idxs_for_exploration, possible_AoHhIdx_given_Yc_vecs(:,HhIdx_given_Yc_vec_idx)); %#ok<*FVAL>
+                            if ~isempty(experience_.P_Uk)
+                                experience_.MeanAdversarialRewardEstimate = ...
+                                    sum(SmartGridUserEnv_FD.computeAdversarialRewardEstimates(optimization_params_, experience_).*...
+                                    experience_.P_YksgY12kn1,1);
+                            end
+                            experiences(1+HhIdx_given_Yc_vec_idx) = experience_;
                         end
                     end
+                    % fprintf("\n%f\n",toc(start_t));
 
-                    MeanAdversarialRewardEstimates = [experiences.MeanAdversarialRewardEstimate];                    
+                    MeanAdversarialRewardEstimates = [experiences.MeanAdversarialRewardEstimate];
                     valid_strategies_flag = ~isinf(MeanAdversarialRewardEstimates);
                     if any(valid_strategies_flag)
-                        experience_orig.MeanAdversarialRewardEstimate =...
-                            SmartGridUserEnv_FD.computeMeanAdversarialRewardEstimate(optimization_params_, experience_orig.P_Aks,...
-                            experience_orig.Hhk_idxs, experience_orig.P_YksgY12kn1);                        
-                        experiences = [experiences(valid_strategies_flag) experience_orig];
-
+                        experiences = experiences(valid_strategies_flag);
+                        % [~,valid_strat_idx] = max([experiences.MeanAdversarialRewardEstimate]);
                         q_values = DeterministicActorCriticAgent.computeCriticTargets_with_exp(agent.Critic, agent.Actor, experiences, params);
                         [~,valid_strat_idx] = max(q_values);
-
-                        [noisy_P_Uk] = experiences(valid_strat_idx).P_Uk;
-                        [P_Aks] = experiences(valid_strat_idx).P_Aks;
-                        [Hhk_idxs] = experiences(valid_strat_idx).Hhk_idxs;
-                        [P_YksgY12kn1] = experiences(valid_strat_idx).P_YksgY12kn1;
+                        [P_Uk] = experiences(valid_strat_idx).P_Uk;
+                        belief_trans_info.P_Aks = experiences(valid_strat_idx).P_Aks;
+                        belief_trans_info.Hhk_idxs = experiences(valid_strat_idx).Hhk_idxs;
+                        belief_trans_info.P_YksgY12kn1 = experiences(valid_strat_idx).P_YksgY12kn1;
                     end
                 end
             end
@@ -234,22 +259,20 @@ classdef DeterministicActorCriticAgent < agents.AbstractActorCriticAgent
         function [agent,Data] = learn_(agent,Exp, Data)
             % store experiences
             appendWithoutSampleValidation(agent.ReplayBuffer,Exp);
+            [experiences, ~] = sample(agent.ReplayBuffer, agent.AgentOptions.MiniBatchSize);
+            if ~isempty(experiences)
+                [agent,actorLoss,criticLoss] = learnFromExperiences_(agent, experiences);
+                if isempty(Data.CumulativeLoss)
+                    Data.CumulativeLoss = [actorLoss;criticLoss];
+                else
+                    Data.CumulativeLoss = Data.CumulativeLoss + [actorLoss;criticLoss];
+                end
+                Data.LearntEventsCount = Data.LearntEventsCount + 1;
+            end
 
-            if agent.AgentOptions.InMemoryUpdateInterval == 0 || ...
-                    mod(Exp.step_index, round(agent.AgentOptions.InMemoryUpdateInterval*agent.Params.k_num)) == 0
-                [experiences, ~] = sample(agent.ReplayBuffer,...
-                    agent.AgentOptions.MiniBatchSize);
-                if ~isempty(experiences)
-                    [agent,actorLoss,criticLoss] = learnFromExperiences_(agent, experiences);
-                    if isempty(Data.CumulativeLoss)
-                        Data.CumulativeLoss = [actorLoss;criticLoss];
-                    else
-                        Data.CumulativeLoss = Data.CumulativeLoss + [actorLoss;criticLoss];
-                    end
-                    Data.LearntEventsCount = Data.LearntEventsCount + 1;
-                elseif Exp.IsDone
-                    [experiences, ~] = sample(agent.ReplayBuffer,...
-                        agent.ReplayBuffer.Length);
+            if Exp.IsDone
+                if Data.LearntEventsCount == 0
+                    [experiences, ~] = sample(agent.ReplayBuffer, agent.ReplayBuffer.Length);
                     [agent,actorLoss,criticLoss] = learnFromExperiences_(agent, experiences);
                     if isempty(Data.CumulativeLoss)
                         Data.CumulativeLoss = [actorLoss;criticLoss];
@@ -258,32 +281,33 @@ classdef DeterministicActorCriticAgent < agents.AbstractActorCriticAgent
                     end
                     Data.LearntEventsCount = Data.LearntEventsCount + 1;
                 end
+                agent.trained_episodes = agent.trained_episodes + 1;
             end
-            agent.trained_episodes = agent.trained_episodes + uint64(Exp.IsDone);
         end
 
         function [agent,actorLoss,criticLoss] = learnFromExperiences_(agent, experiences)
-            a_num = agent.Params.a_num;
             BatchSize = length(experiences);
-            Observations = reshape(cell2mat([experiences.Observation]),a_num,1,BatchSize);
-            Actions = {reshape(cell2mat([experiences.Action]),agent.Params.subpolicy_params_num_con,1,BatchSize)};
+            Observations = reshape(cell2mat([experiences.Observation]),agent.Params.actor_nnet_intput_size,1,BatchSize);
+            Actions = reshape(cell2mat([experiences.Action]),agent.Params.actor_nnet_output_size,1,BatchSize);
 
-            [criticTargets] = agent.computeCriticTargets(agent.Critic, agent.Actor, experiences, agent.Params);
-            criticGradInput.Target = criticTargets;
+            %% Controller critic learning
+            if agent.Params.with_mean_reward
+                [criticTargets] = agent.computeCriticTargets_with_exp(agent.Critic, agent.Actor, experiences, agent.Params);
+            else
+                [criticTargets] = agent.computeControllerCriticTargets(agent.Critic, agent.Actor, experiences, agent.Params);
+            end
+            gradInput.Target = criticTargets;
 
-            [criticGradient, gradInfo] = gradient(agent.Critic, @DeterministicActorCriticAgent.criticLossFn,...
-                [{Observations}, Actions],criticGradInput);
-            [Critic_new,agent.CriticOptimizer] = update(agent.CriticOptimizer,agent.Critic,...
-                criticGradient);
+            [gradientVal, gradInfo] = gradient(agent.Critic, @DeterministicActorCriticAgent.criticLossFn,...
+                [{Observations}, {Actions}],gradInput);
+            [Critic_new,agent.CriticOptimizer] = update(agent.CriticOptimizer,agent.Critic, gradientVal);
             criticLoss = rl.logging.internal.util.extractLoss(gradInfo);
-
-            [actorGradient, actorLoss]  = agent.computeActorGradients(agent.Critic, agent.Actor,...
-                {Observations});
-            [Actor_new,agent.ActorOptimizer] = update(agent.ActorOptimizer,agent.Actor,...
-                actorGradient);
-
             agent.Critic = syncParameters(agent.Critic,Critic_new,agent.Params.TargetSmoothFactor_C);
-            agent.Actor = syncParameters(agent.Actor,Actor_new,agent.Params.TargetSmoothFactor_Ac);
+
+            %% Controller learning
+            [gradientVal, actorLoss]  = agent.computeActorGradients(agent.Critic, agent.Actor, {Observations});
+            [nnet_new,agent.ActorOptimizer] = update(agent.ActorOptimizer,agent.Actor, gradientVal);
+            agent.Actor = syncParameters(agent.Actor,nnet_new,agent.Params.TargetSmoothFactor_Ac);
 
             if isa(actorLoss,"gpuArray")
                 actorLoss = gather(actorLoss);
@@ -295,7 +319,7 @@ classdef DeterministicActorCriticAgent < agents.AbstractActorCriticAgent
     end
 
     methods (Static)
-        function [exp] = optimization_routine(params_,P_Akn1,P_AgU_Yc_in, y_idxs_for_exploration, AhIdx_given_Ye)
+        function [experience] = optimization_routine(params_,P_Akn1,P_AgU_Yc_in, y_idxs_for_exploration, AoHhIdx_given_Ye)
             if isa(P_AgU_Yc_in,'parallel.pool.Constant')
                 P_AgU_Yc = P_AgU_Yc_in.Value;
             else
@@ -308,38 +332,46 @@ classdef DeterministicActorCriticAgent < agents.AbstractActorCriticAgent
             Aeq_cons_ = params_.Aeq_cons;
             beq_cons_ = params_.beq_cons;
             eq_cons_num_ = params_.eq_cons_num;
-            a_nn_cells = params_.a_nn_cells;
+            nn_cells = params_.nn_cells;
             u_num = params_.u_num;
             P_HgA = params_.P_HgA;
             C_HgHh_adv_ = params_.C_HgHh_design;
             paramsPrecision_ = params_.paramsPrecision;
-            function_handles = params_.function_handles;
             minLikelihoodFilter_ = params_.minLikelihoodFilter;
-            y_num_for_exploration = length(AhIdx_given_Ye);
+            y_num_for_exploration = length(AoHhIdx_given_Ye);
+            Function_handles = params_.Function_handles;
+            A2HZ = Function_handles.A2HZ;
 
-            A2HZ=function_handles.A2HZ;
+            experience = struct;
+            experience.P_Uk = [];
+            experience.P_Aks = [];
+            experience.Hhk_idxs = [];
+            experience.P_YksgY12kn1 = [];
+            experience.MeanAdversarialRewardEstimate = -inf;
 
-            P_Uk = [];
-            MeanAdversarialRewardEstimate = inf;
-            P_Aks = [];
-            P_YksgY12kn1 = [];
-            Hhk_idxs = [];
 
             Aineq_cons_ = sparse([]);
             bineq_cons_ = [];
             alpha_vector_ = zeros(1,u_num);
             for Ye_idx_ = 1:y_num_for_exploration
-                Ahk_idx_ = AhIdx_given_Ye(Ye_idx_);
-                [Hhk_idx, ~] = A2HZ(Ahk_idx_);
+                AoHhk_idx = AoHhIdx_given_Ye(Ye_idx_);
                 P_AgU_ = P_AgU_Ye{Ye_idx_};
-                P_YcgU_ = sum(P_AgU_,1);
+                P_HgU_ = P_HgA*P_AgU_;
+                P_YcgU_ = sum(P_HgU_,1);
+                if params_.with_a_nncells
+                    P_AoHgU = P_AgU_;
+                    [Hhk_idx, ~] = A2HZ(AoHhk_idx);
+                else
+                    P_AoHgU = P_HgA*P_AgU_;
+                    Hhk_idx = AoHhk_idx;
+                end
 
-                Aineq_cons_HhIdx_ = a_nn_cells(Ahk_idx_).A*P_AgU_ - a_nn_cells(Ahk_idx_).b*P_YcgU_;
-                bineq_cons_HhIdx_ = -paramsPrecision_*ones(length(a_nn_cells(Ahk_idx_).b),1);
+                Aineq_cons_HhIdx_ = nn_cells(AoHhk_idx).A*P_AoHgU - nn_cells(AoHhk_idx).b*P_YcgU_;
+                bineq_cons_HhIdx_ = -paramsPrecision_*ones(length(nn_cells(AoHhk_idx).b),1);
 
                 Aineq_cons_ = [Aineq_cons_;Aineq_cons_HhIdx_;-P_YcgU_];
                 bineq_cons_ = [bineq_cons_;bineq_cons_HhIdx_;-(minLikelihoodFilter_+paramsPrecision_)]; %#ok<*AGROW>
-                alpha_vector_ = alpha_vector_ + C_HgHh_adv_(Hhk_idx,:)*P_HgA*P_AgU_;
+                alpha_vector_ = alpha_vector_ + C_HgHh_adv_(Hhk_idx,:)*P_HgU_;
             end
 
             gurobi_model_.A = [Aeq_cons_;Aineq_cons_];
@@ -351,70 +383,56 @@ classdef DeterministicActorCriticAgent < agents.AbstractActorCriticAgent
                 P_Uk = (gurobi_result_.x);
                 belief_trans_info.P_AgU_Yc = P_AgU_Yc;
                 [P_Aks, Hhk_idxs, P_YksgY12kn1] = SmartGridUserEnv_FD.get_possible_belief_transitions(params_, P_Akn1, P_Uk, belief_trans_info, []);
-                MeanAdversarialRewardEstimate = SmartGridUserEnv_FD.computeMeanAdversarialRewardEstimate(params_, P_Aks, Hhk_idxs, P_YksgY12kn1);
+
+                experience.P_Uk = P_Uk;
+                experience.P_Aks = P_Aks;
+                experience.Hhk_idxs = Hhk_idxs;
+                experience.P_YksgY12kn1 = P_YksgY12kn1;
             end
-
-            exp = struct;
-            exp.P_Uk = P_Uk;
-            exp.P_Aks = P_Aks;
-            exp.Hhk_idxs = Hhk_idxs;
-            exp.P_YksgY12kn1 = P_YksgY12kn1;
-            exp.MeanAdversarialRewardEstimate = MeanAdversarialRewardEstimate;             
         end
-
-        function [criticTargets] = computeCriticTargets(critic, actor, experiences, params)
-            a_num = params.a_num;
-            discountFactor = params.discountFactor;
-            BatchSize = length(experiences);
-
-            rewards = [experiences.AdversarialRewardEstimate];
-            NextObservations = reshape(cell2mat([experiences.NextObservation]),[a_num,1,BatchSize]);
-            NextActions = getAction(actor,{NextObservations});
-            NextQValues = getValue(critic, {NextObservations}, NextActions);
-            criticTargets = rewards + discountFactor*NextQValues;
-        end
-
+        
         function [criticTargets] = computeCriticTargets_with_exp(critic, actor, experiences, params)
             discountFactor = params.discountFactor;
             BatchSize = length(experiences);
-
-            rewards = [experiences.MeanAdversarialRewardEstimate];
-            P_YksgY12kn1 = [experiences.P_YksgY12kn1];
-
+            y_control_num = params.y_control_num;
+            if params.with_controller_reward
+                criticTargets = [experiences.MeanReward];
+                P_Yksg_ = [experiences.P_YksgSk];
+            else
+                criticTargets = [experiences.MeanAdversarialRewardEstimate];
+                P_Yksg_ = [experiences.P_YksgY12kn1];
+            end
             NextObservations = [experiences.P_Aks];
-            NextObservations = cat(3,NextObservations{:});
+            NextObservations = cat(3, NextObservations{:});
             NextActions = getAction(actor,{NextObservations});
-            NextQValues = reshape(getValue(critic, {NextObservations}, NextActions),params.y_control_num,BatchSize);
-            criticTargets = rewards + discountFactor*sum(NextQValues.*P_YksgY12kn1,1);
+            NextQValues = reshape(getValue(critic, {NextObservations}, NextActions),y_control_num, BatchSize);
+            criticTargets = criticTargets + discountFactor*sum(NextQValues.*P_Yksg_,1);
+        end
+
+        function [criticTargets] = computeControllerCriticTargets(critic, actor, experiences, params)
+            discountFactor = params.discountFactor;
+            BatchSize = length(experiences);
+            if params.with_controller_reward
+                criticTargets = [experiences.Reward];
+            else
+                criticTargets = [experiences.AdversarialRewardEstimate];
+            end
+            NextObservations = reshape(cell2mat([experiences.NextObservation]),params.actor_nnet_intput_size,1,BatchSize);
+            NextActions = getAction(actor,{NextObservations});
+            NextQValues = reshape(getValue(critic, {NextObservations}, NextActions),1, BatchSize);
+            criticTargets = criticTargets + discountFactor*NextQValues;         
         end
 
         function Loss = criticLossFn(ModelOutput,GradInput)
             Loss = mse(ModelOutput{1}, reshape(GradInput.Target,size(ModelOutput{1})));
         end
 
-         function [actorGradient, actorLoss] = computeActorGradients(critic, actor, Observation)
+        function [actorGradient, actorLoss] = computeActorGradients(critic, actor, Observation)
             % Static method to computeGradients outside of the agent (e.g.
             % on a worker)
             gradFcn = @DeterministicActorCriticAgent.actorGradientFn;
             actorGradInput.BatchSize = size(Observation{1},3);
-
-            if rl.util.rlfeature("BuiltinGradientAcceleration")
-                % if accelerated function is not available, use dlnetwork
-                % grad input
-                % if accelerated function is available, use learnables and
-                % states
-                fcn = getAcceleratedGradientFcn(getInternalModel(actor),"custom",actorGradInput.BatchSize,1,gradFcn);
-                gradUseLearnable = ~isempty(fcn);
-                if gradUseLearnable
-                    for ct = 1:numel(critic)
-                        actorGradInput.("Critic"+string(ct)) = getLearnableParameters(critic(ct));
-                    end
-                else
-                    actorGradInput.Critic = getModel(critic);
-                end
-            else
-                actorGradInput.Critic = getModel(critic);
-            end
+            actorGradInput.Critic = getModel(critic);
             [actorGradient, gradInfo] = customGradient(actor, gradFcn, Observation{1}, actorGradInput);
             actorLoss = rl.logging.internal.util.extractLoss(gradInfo);
         end
@@ -457,7 +475,7 @@ classdef DeterministicActorCriticAgent < agents.AbstractActorCriticAgent
             subpolicy_params_num_con = length(paramIdx2U);
             U2paramIdx = zeros(u_num,1);
             U2paramIdx(paramIdx2U) = 1:subpolicy_params_num_con;
-
+            params.paramIdx2U = paramIdx2U;
             params.U2paramIdx = U2paramIdx;
             params.subpolicy_params_num_con = subpolicy_params_num_con;
         end
@@ -473,7 +491,7 @@ classdef DeterministicActorCriticAgent < agents.AbstractActorCriticAgent
             params.eq_cons_num = length(beq_cons);
         end
 
-        function [P_Uks] = conAction2SubPolicy(params, actions, ~)
+        function [P_Uks] = conAction2SubPolicy(params, actions)
             u_num = params.u_num;
             y_control_num = params.y_control_num;
             valid_YgXZn1= params.valid_YgXZn1;
@@ -516,7 +534,6 @@ classdef DeterministicActorCriticAgent < agents.AbstractActorCriticAgent
                     end
                 end
             end
-            P_Uks = sparse(P_Uks);
         end
 
         function [actions] = conSubPolicy2Action(params, P_Uks)
@@ -552,8 +569,7 @@ classdef DeterministicActorCriticAgent < agents.AbstractActorCriticAgent
                         end
                     end
                 end
-            end
-            
+            end            
         end
 
         function [X_12D_vecs] = nnet_params_to_simplex_transform(Y_12Dn1_vecs)
@@ -578,6 +594,7 @@ classdef DeterministicActorCriticAgent < agents.AbstractActorCriticAgent
                 Y_12Dn1_vecs(:,action_idx) = max(-params_limit, min(params_limit, log(X_12D_vecs(1:D_num-1,action_idx)/X_12D_vecs(end,action_idx))));
             end
         end
+            
     end
 
     %======================================================================
@@ -586,19 +603,16 @@ classdef DeterministicActorCriticAgent < agents.AbstractActorCriticAgent
     methods
         function s = saveobj(agent)
             s = struct;
-            s.Actor =agent.Actor;
-            s.Critic = agent.Critic;
+            s.Actor = (agent.Actor);         
+            s.Critic = (agent.Critic);       
             s.Actor.UseDevice = 'cpu';
             s.Critic.UseDevice = 'cpu';
-
             s.ActorOptimizer = agent.ActorOptimizer;
             s.CriticOptimizer = agent.CriticOptimizer;
-
             s.AgentOptions = agent.AgentOptions;
             s.Params = agent.Params;
             s.trained_episodes = agent.trained_episodes;
             s.ReplayBuffer = agent.ReplayBuffer;
-            s.noiseModel = agent.noiseModel;
         end
     end
     
@@ -609,9 +623,9 @@ classdef DeterministicActorCriticAgent < agents.AbstractActorCriticAgent
             else
                 ReplayBuffer = [];
             end
-            agent = DeterministicActorCriticAgent(s.Actor, s.Critic, s.AgentOptions, s.Params, ReplayBuffer, s.trained_episodes, s.noiseModel);
-            agent.CriticOptimizer = s.CriticOptimizer;
+            agent = DeterministicActorCriticAgent(s.Actor, s.Critic, s.AgentOptions, s.Params, ReplayBuffer, s.trained_episodes);
             agent.ActorOptimizer = s.ActorOptimizer;
+            agent.CriticOptimizer = s.CriticOptimizer;          
         end
     end
 end

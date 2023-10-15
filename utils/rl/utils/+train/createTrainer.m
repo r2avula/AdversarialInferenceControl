@@ -33,10 +33,6 @@ elseif isa(trainingOptions,'rl.option.rlTrainingOptions') && trainingOptions.Use
             trainer = rl.train.parallel.TRPOParallelTrainer(env,agent,trainingOptions);
         end
 
-    elseif isa(agent,"agents.AbstractActorCriticAgent")
-        % sync
-        trainer = train.ActorCriticAgentParallelTrainer(env,agent,trainingOptions);
-
     elseif isa(agent,"rl.agent.rlACAgent")
         if isasync
             % A3C

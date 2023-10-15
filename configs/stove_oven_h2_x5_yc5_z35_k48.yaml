@@ -1,0 +1,104 @@
+# Test cases
+NC: 1
+subopt_DBS_FDC_UA: 1
+best_effort_moderation: 1
+differential_privacy: 1
+AMDPG: 1
+
+# Discretization of measurements
+slotIntervalInSeconds: 300
+emu_measurement_powerQuantPU: 400
+smartmeter_powerQuantPU: 400
+emu_control_powerQuantPU: 400
+minPowerDemandInW: 0
+maxPowerDemandInW: 1600
+limit_y_range_to_x_range: 1
+
+# Battery
+batteryRatedPower: 6000
+batteryRatedCapacityInAh: 30
+bat_power_scaling_factor: 5
+batteryNominalVoltage: 48
+cell_SOC_high: 0.891204
+cell_SOC_low: 0.1
+cell_SOC_init: 0.1
+cell_voltage_high: 4.2
+cell_voltage_low: 2.5
+cell_nominalVoltage: 4
+converterEfficiency: 95
+cell_1C_capacityInAh: 1.8048
+allowedRelativeCapacityChange: 20
+capacityCostPerkWh: 130
+emulator: 'comsol'
+sample_num: 50
+deglifePartitions_num: 1
+driveToSOH_timeAccelerationFactor: 100
+driveToSOC_timeAccelerationFactor: 1
+driveToSOC_timePeriodScaleFactor: 1
+driveToSOC_attempts_max: 100
+batteryLevelsNum_paramapprox: 5
+
+# Hypothesis State 
+homogeneous_reward : 0
+applianceGroup1: ['stove','oven']
+applianceGroupsNum: 1
+hypothesisStatesPerAppliance: [2]
+hypothesisStatesNum: 2
+costPerApplianceDetection_emu : [1]
+rewardPerApplianceDetection_adv : [1]
+reward_amplifying_factor: 1
+applianceGroup1Threshold: [10]
+
+# General Controller
+controlStartTime: 10
+controlEndTime: 14
+paramsPrecision: 1e-6
+beliefSpacePrecision_adv: 1e-3
+minLikelihoodFilter: 1e-4
+
+# Real Data
+OSG_max_cache_size: 1e4
+dataset: 'kth_lil'
+dataType: 'real'
+data_training_validation_ratio: 0.6
+numEvalHorizons: 2000
+
+# MDP controller with discrete belief space against unaware adversary
+discountFactor_MDP: 0.9
+max_valueFnIterations: 25
+beliefSpacePrecision_EMU_subopt_DBS: 0.2
+value_iter_conv_threshold: 1e-1
+
+# Reinforcement learning
+with_bem_initialized_actor: 1
+with_controller_reward: 0
+with_mean_reward: 1
+numTrainHorizons: 15000
+discountFactor_RL: 0.99
+noise_epsilon: 0.03
+noise_sd: 0.05
+MiniBatchSize: 64
+ReplayBufferLength: 1e4
+logistic_param_limit: 10
+actor_net_hidden_layers : 3
+actor_net_hidden_layer_neurons_ratio_obs: 0.5
+actor_net_hidden_layer_neurons_ratio_act: 0.5
+GradientDecayFactor_Ac: 0.9
+SquaredGradientDecayFactor_Ac: 0.999
+Epsilon_adam_Ac: 1e-8
+critic_net_hidden_layers : 4
+critic_net_hidden_layer_neurons_ratio_obs: 0.5
+critic_net_hidden_layer_neurons_ratio_act: 0.50
+GradientDecayFactor_C: 0.9
+SquaredGradientDecayFactor_C: 0.999
+Epsilon_adam_C: 1e-8
+learning_rate_Ac: 0.001
+learning_rate_C: 0.001
+TargetSmoothFactor_Ac: 0.0001
+TargetSmoothFactor_C: 0.001
+
+# AMDPG
+with_a_nncells: 1
+exploration_epsilon: 0.03
+y_num_for_exploration: 3
+num_rand_adv_strats_for_exploration: 128

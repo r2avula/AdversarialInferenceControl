@@ -1,12 +1,10 @@
-function [params_FDC, params_RDC, config] = initParams(config,additional_data, getEssParams_flag)
+function [params_FDC, config] = initParams(config,additional_data, getEssParams_flag)
 [config] = expandConfig(config);
 
 x_num= config.x_num;
 h_num= config.h_num;
 z_num= config.z_num;
 paramsPrecision= config.paramsPrecision;
-l_num = config.l_num;
-z_num_per_level = config.z_num_per_level;
 appliances_num = config.applianceGroupsNum;
 hypothesisStatesPerAppliance = config.hypothesisStatesPerAppliance;
 h_vec_space = config.h_vec_space;
@@ -177,7 +175,6 @@ params_FDC.a_num = a_num;
 
 function_handles = get_vectorizing_function_handles(params_FDC);
 HZ2A = function_handles.HZ2A;
-A2HZ = function_handles.A2HZ;
 
 P_HgA = zeros(h_num,a_num);
 P_ZgA = zeros(z_num,a_num);
@@ -200,53 +197,5 @@ s_num = x_num*h_num*a_num;
 params_FDC.s_num = s_num;
 params_FDC.u_num = y_control_num*s_num;
 
-%% RDC params
-params_RDC = params_FDC;
-ZIdxsgLIdx = zeros(z_num_per_level,l_num);
-LIdxgZIdx = zeros(z_num,1);
-Zk_idx = 0;
-for Lk_idx = 1:l_num
-    ZIdxsgLIdx(:,Lk_idx) = Zk_idx + 1: Zk_idx + z_num_per_level;
-    LIdxgZIdx(Zk_idx + 1: Zk_idx + z_num_per_level) = Lk_idx;
-    Zk_idx = Zk_idx + z_num_per_level ;
-end
-
-b_num = h_num*l_num;
-params_RDC.b_num = b_num;
-params_RDC.l_num = l_num;
-params_RDC.z_num_per_level = z_num_per_level;
-params_RDC.ZIdxsgLIdx = ZIdxsgLIdx;
-params_RDC.LIdxgZIdx = LIdxgZIdx;
-
-t_num = x_num*h_num*l_num;
-w_num = y_control_num*t_num;
-params_RDC.t_num = t_num;
-params_RDC.w_num = w_num;
-
-function_handles = get_vectorizing_function_handles(params_RDC);
-HL2B = function_handles.HL2B;
-
-P_HgB = zeros(h_num,b_num);
-P_LgB = zeros(l_num,b_num);
-for Lk_idx = 1:l_num
-    for Hk_idx = 1:h_num
-        b_idx = HL2B(Hk_idx,Lk_idx);
-        P_HgB(Hk_idx,b_idx) = 1;
-        P_LgB(Lk_idx,b_idx) = 1;
-    end
-end
-
-P_BgA = zeros(b_num,a_num);
-for Ak_idx = 1:a_num
-    [Hk_idx,Zk_idx] = A2HZ(Ak_idx);
-
-    Lk_idx = LIdxgZIdx(Zk_idx);
-    Bk_idx = HL2B(Hk_idx,Lk_idx);
-
-    P_BgA(Bk_idx,Ak_idx) = 1;
-end
-
-params_RDC.P_HgB = P_HgB;
-params_RDC.P_LgB = P_LgB;
-params_RDC.P_BgA = P_BgA;
+params_FDC.v_num = y_control_num*h_num;
 end

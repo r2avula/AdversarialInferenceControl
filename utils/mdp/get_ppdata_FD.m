@@ -90,7 +90,7 @@ if initialize_pp_data
 
     [progressData, progressDataQueue] = ProgressData('\t\t\tComputing PP ddata : ');
     incPercent = (1/y_control_num/z_num)*100;
-    parfor Yck_idx = y_control_range
+    for Yck_idx = y_control_range
         P_Zp1gZD_t = P_Zp1gZD;
         HZ2A_ = HZ2A;
         YcSs_2U_ = YcSs_2U;
@@ -110,6 +110,7 @@ if initialize_pp_data
                     UIdxs = YcSs_2U_(Yck_idx,XsHAn1_2S_(valid_XIdxs, hk_idx, Akn1_idx));
                     P_AgU(HZs2A_(hk_idx, z_range), UIdxs) = P_Zp1gZD_(:,valid_DIdxs).*repmat(P_XHgHn1_(valid_XIdxs,hk_idx,hkn1_idx)', z_num, 1);
                 end
+                P_AgU(P_AgU<paramsPrecision)=0;
                 P_AgU_YcAkn1_{Akn1_idx} = sparse(P_AgU);
             end
             send(progressDataQueue, incPercent);
@@ -119,8 +120,8 @@ if initialize_pp_data
     progressData.terminate();
 
     pp_data.valid_XgYZn1 = valid_XgYZn1;    
-    pp_data.valid_YgXZn1 = valid_YgXZn1;  
-    pp_data.valid_DgXZn1 = valid_DgXZn1;  
+    pp_data.valid_YgXZn1 = valid_YgXZn1; 
+    pp_data.valid_DgXZn1 = valid_DgXZn1;   
     pp_data.P_AgU_YcAkn1 = P_AgU_YcAkn1; 
 
     pp_data.params = params;

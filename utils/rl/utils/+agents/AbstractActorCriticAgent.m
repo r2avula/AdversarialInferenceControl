@@ -35,25 +35,11 @@ classdef (Abstract) AbstractActorCriticAgent < matlab.mixin.Heterogeneous ...
         end
 
         function agent = setActor(agent, actor)
-            % enable gradient acceleration
-            if rl.util.rlfeature('BuiltinGradientAcceleration')
-                actor = accelerateBuiltin(actor,true);
-            else
-                actor = accelerate(actor,true);
-            end
-
             agent.Actor = actor;
             agent.ActorOptimizer = opt.ADAMOptimizer(agent.AgentOptions.ActorOptimizerOptions);
         end
 
         function agent = setCritic(agent,critic)
-            % enable gradient acceleration
-            if rl.util.rlfeature('BuiltinGradientAcceleration')
-                critic = accelerateBuiltin(critic,true);
-            else
-                critic = accelerate(critic,true);
-            end
-
             agent.Critic = critic;
             agent.CriticOptimizer = opt.ADAMOptimizer(agent.AgentOptions.CriticOptimizerOptions);
         end

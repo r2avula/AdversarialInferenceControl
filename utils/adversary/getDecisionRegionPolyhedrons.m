@@ -16,24 +16,24 @@ end
 
 DRs_in_Rn = Polyhedron();
 internal_routine_fn = @internal_routine;
-[~,p_pool] = evalc('gcp(''nocreate'');');
-if isempty(p_pool)
+% [~,p_pool] = evalc('gcp(''nocreate'');');
+% if isempty(p_pool)
     for region_idx = 1:h_num
         DRs_in_Rn(region_idx) = internal_routine_fn(region_idx, params);
         if(display_flag)
             send(progressDataQueue, incPercent);
         end
     end
-else
-    params = parallel.pool.Constant(params);
-    parfor region_idx = 1:h_num
-        params_ = params.Value;
-        DRs_in_Rn(region_idx) = feval(internal_routine_fn, region_idx, params_);  %#ok<*FVAL> 
-        if(display_flag)
-            send(progressDataQueue, incPercent);
-        end
-    end
-end
+% else
+%     params = parallel.pool.Constant(params);
+%     parfor region_idx = 1:h_num
+%         params_ = params.Value;
+%         DRs_in_Rn(region_idx) = feval(internal_routine_fn, region_idx, params_);  %#ok<*FVAL> 
+%         if(display_flag)
+%             send(progressDataQueue, incPercent);
+%         end
+%     end
+% end
 
 if(display_flag)
     progressData.terminate();

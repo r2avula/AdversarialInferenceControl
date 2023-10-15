@@ -3,10 +3,10 @@ saved_data = load(policy_fileFullPath,'trainStats');
 trainStats = saved_data.trainStats;
 episodes_num = trainStats.EpisodeIndex(end);
 trainStats.TrainingOptions.MaxEpisodes = episodes_num;
-trainStats.Information.TrainingOpts = trainStats.TrainingOptions;
+% trainStats.Information.TrainingOpts = trainStats.TrainingOptions;
 % elapsed_duration = trainStats.Information.ElapsedTime;
-checkpoint = train.RLTrainingResult.struct2class(trainStats);
-episodeManager = plot(checkpoint);
+% checkpoint = train.RLTrainingResult.struct2class(trainStats);
+episodeManager = plot(trainStats);
 episodeManager.View.Container.RightWidth = 480;
 episodeManager.View.Container.WindowMaximized = 1;
 episodeManager.cbShowEpisodeQ0(struct('Value',1))

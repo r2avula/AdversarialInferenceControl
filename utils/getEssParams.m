@@ -4,21 +4,19 @@ if nargin == 2
 end
 z_num = config.z_num;
 d_num = config.d_num;
-l_num = config.l_num;
-ZIdxsgLIdx = config.ZIdxsgLIdx;
+l_num_paramapprox = config.l_num_paramapprox;
 soc_grid_boundaries = config.soc_grid_boundaries;
+z_k_idxs_given_l_k_idx_comsol= config.z_k_idxs_given_l_k_idx_comsol;
 gamma = config.gamma;
 gamma_tau = config.gamma_tau;
-LIdxgZIdx = config.LIdxgZIdx;
 legsInParallel = config.legsInParallel;
 cellsInSeries = config.cellsInSeries;
-z_num_per_level = config.z_num_per_level;
 cell_1C_capacityInAh = config.cell_1C_capacityInAh;
 cell_nominalVoltage = config.cell_nominalVoltage;
-l_grid_boundaries = config.l_grid_boundaries;
+l_grid_boundaries_comsol = config.l_grid_boundaries_comsol;
 cell_pow_set = config.cell_pow_set;
 slotIntervalInSeconds = config.slotIntervalInSeconds;
-l_grid_bin_mean = config.l_grid_bin_mean;
+l_grid_bin_mean_comsol = config.l_grid_bin_mean_comsol;
 cell_SOC_low = config.cell_SOC_low;
 cell_SOC_high = config.cell_SOC_high;
 slotIntervalInHours = config.slotIntervalInHours;
@@ -43,8 +41,8 @@ if (isfield(config,'emulator') && config.emulator == "comsol")
 
     P_Zp1gZD_map_all = zeros(z_num,z_num,d_num,deglifePartitions_num);
 
-    mean_capacityLossInAh_map_all = nan(l_num,d_num,deglifePartitions_num);
-    cell_power_loss_param_map_all = nan(l_num,d_num,deglifePartitions_num);
+    mean_capacityLossInAh_map_all = nan(z_num,d_num,deglifePartitions_num);
+    cell_power_loss_param_map_all = nan(z_num,d_num,deglifePartitions_num);
 
     alpha_est_map_all = nan(z_num,d_num,deglifePartitions_num);
     beta_est_map_all = nan(z_num,d_num,deglifePartitions_num);
@@ -54,7 +52,7 @@ if (isfield(config,'emulator') && config.emulator == "comsol")
     comsolParams = struct;
     comsolParams.cell_1C_capacityInAh = cell_1C_capacityInAh;
     comsolParams.cell_nominalVoltage = cell_nominalVoltage;
-    comsolParams.soc_grid_boundaries = l_grid_boundaries;
+    comsolParams.soc_grid_boundaries = l_grid_boundaries_comsol;
     comsolParams.cell_pow_set = cell_pow_set;
     comsolParams.slotIntervalInSeconds = slotIntervalInSeconds;
     comsolParams.sample_num = config.sample_num;
@@ -74,14 +72,14 @@ if (isfield(config,'emulator') && config.emulator == "comsol")
         if(fileExists)
             cached_data = load(filename,'cellSimData');
             cellSimData = cached_data.cellSimData;
-            cellSimData_all{partition_idx} = addCalenderAgingAndAaggregateSamples(cellSimData,comsolParams,l_grid_bin_mean);
+            cellSimData_all{partition_idx} = addCalenderAgingAndAaggregateSamples(cellSimData,comsolParams,l_grid_bin_mean_comsol);
         else
             do_simulations(partition_idx) = true;
         end
     end
 
     if(any(do_simulations))
-        %         error('battery simulation required!')
+        error('battery simulation required!')
         path_to_comsol_app = config.path_to_comsol_app;  
         addpath(genpath(strcat(path_to_comsol_app,"mli")));
         checkComsolConnection(path_to_comsol_app);
@@ -97,7 +95,7 @@ if (isfield(config,'emulator') && config.emulator == "comsol")
             [filename,~] = findFileName(comsolParams,cellSimData_fileNamePrefix,'cellSimParams');
             cellSimData = runComsolSimulation(comsolParams,comsol_model,progressDataQueue, incPercent);
             parsave_cellSimData_fn(filename,cellSimData,comsolParams)
-            cellSimData_all{partition_idx} = addCalenderAgingAndAaggregateSamples(cellSimData,comsolParams,l_grid_bin_mean);
+            cellSimData_all{partition_idx} = addCalenderAgingAndAaggregateSamples(cellSimData,comsolParams,l_grid_bin_mean_comsol);
         end
         terminate(progressData);
     end
@@ -108,7 +106,6 @@ if (isfield(config,'emulator') && config.emulator == "comsol")
         essProcessedDataParams.soc_grid_boundaries = soc_grid_boundaries;
         essProcessedDataParams.gamma = gamma;
         essProcessedDataParams.gamma_tau = gamma_tau;
-        essProcessedDataParams.LIdxgZIdx = LIdxgZIdx;
 
         [filename,fileExists] = findFileName(essProcessedDataParams,essProcessedDataFileNamePrefix,'essProcessedDataParams');
         if(fileExists)
@@ -120,32 +117,30 @@ if (isfield(config,'emulator') && config.emulator == "comsol")
 
             alpha_est_map = nan(z_num,d_num);
             beta_est_map = nan(z_num,d_num);
-            cell_power_loss_param_map = nan(l_num,d_num);
+            cell_power_loss_param_map = nan(z_num,d_num);
 
 
             num_unif_samples = config.sample_num;
             scaled_soc_grid_boundaries = rescale(soc_grid_boundaries,0,1,'InputMin',cell_SOC_low,'InputMax',cell_SOC_high);
 
             [progressData, progressDataQueue] = ProgressData('\t\t\tEstimating ESS params :');
-            incPercent = (1/d_num/l_num)*100;
+            incPercent = (1/d_num/l_num_paramapprox)*100;
             P_Zp1gZD_map = zeros(z_num,z_num,d_num);
-            mean_capacityLossInAh_map = nan(l_num,d_num);
+            mean_capacityLossInAh_map = nan(z_num,d_num);
             soc_kp1_estimate_3c_fn_ref = @(soc_k,power_loss_param,gamma,gamma_tau,sigma_d,en_cap)soc_kp1_estimate_3c_fn(soc_k,power_loss_param,gamma,gamma_tau,sigma_d,en_cap);
             for d_k_idx = 1:d_num
-
-                ZIdxsgLIdx_t = ZIdxsgLIdx;
                 soc_grid_boundaries_t = soc_grid_boundaries;
                 scaled_soc_grid_boundaries_t = scaled_soc_grid_boundaries;
                 soc_kp1_estimate_3c_fn_ref_t = soc_kp1_estimate_3c_fn_ref;
 
                 alpha_est_t = nan(z_num,1);
                 beta_est_t = nan(z_num,1);
-                cell_power_loss_param_map_t = nan(l_num,1);
+                cell_power_loss_param_map_t = nan(z_num,1);
 
                 P_Zp1gZD_map_t = zeros(z_num,z_num,1);
-                for l_k_idx = 1:l_num
-                    capacity_loss_factor_vec = reshape(capacity_loss_factor_samples(l_k_idx,d_k_idx,:),1,[]);
-                    power_loss_param_samples_vec = reshape(power_loss_param_samples(l_k_idx,d_k_idx,:),1,[])*legsInParallel*cellsInSeries;
+                for l_k_idx_comsol = 1:l_num_paramapprox
+                    capacity_loss_factor_vec = reshape(capacity_loss_factor_samples(l_k_idx_comsol,d_k_idx,:),1,[]);
+                    power_loss_param_samples_vec = reshape(power_loss_param_samples(l_k_idx_comsol,d_k_idx,:),1,[])*legsInParallel*cellsInSeries;
 
                     validSampleIdxs = (~isnan(capacity_loss_factor_vec) & ~isinf(capacity_loss_factor_vec));
 
@@ -153,11 +148,9 @@ if (isfield(config,'emulator') && config.emulator == "comsol")
                     power_loss_param_samples_vec = power_loss_param_samples_vec(validSampleIdxs);
                     numValidSamples = length(capacity_loss_factor_vec);
                     if(numValidSamples>0)
-                        cell_power_loss_param_map_t(l_k_idx) = mean(power_loss_param_samples_vec)/(legsInParallel*cellsInSeries);
-                        z_k_idxs = ZIdxsgLIdx_t(:,l_k_idx);
-                        valid_z_k_idx_in_l_k_idx = false(z_num_per_level,1);
-                        for z_k_idx_in_l_k_idx = 1:z_num_per_level
-                            z_k_idx = z_k_idxs(z_k_idx_in_l_k_idx);
+                        z_k_idxs = z_k_idxs_given_l_k_idx_comsol{l_k_idx_comsol};
+                        for z_k_idx = z_k_idxs
+                            cell_power_loss_param_map_t(z_k_idx) = mean(power_loss_param_samples_vec)/(legsInParallel*cellsInSeries);
                             soc_a = soc_grid_boundaries_t(z_k_idx);
                             soc_b = soc_grid_boundaries_t(z_k_idx+1);
 
@@ -199,14 +192,11 @@ if (isfield(config,'emulator') && config.emulator == "comsol")
                                 P_Zp1 = P_Zp1/sum(P_Zp1);
                                 P_Zp1 = roundOffInSimplex(P_Zp1,paramsPrecision);
                                 P_Zp1gZD_map_t(:,z_k_idx) = P_Zp1;
-                                valid_z_k_idx_in_l_k_idx(z_k_idx_in_l_k_idx) = true;
                                 alpha_est_t(z_k_idx) = alpha_est;
                                 beta_est_t(z_k_idx) = beta_est;
                             end
-                        end
 
-                        if(any(valid_z_k_idx_in_l_k_idx) )
-                            mean_capacityLossInAh_map(l_k_idx,d_k_idx) = mean(capacity_loss_factor_vec)*cell_1C_capacityInAh*legsInParallel;
+                            mean_capacityLossInAh_map(z_k_idx,d_k_idx) = mean(capacity_loss_factor_vec)*cell_1C_capacityInAh*legsInParallel;
                         end
                     end
 
@@ -262,13 +252,11 @@ else
     essProcessedDataParams.soc_grid_boundaries = soc_grid_boundaries;
     essProcessedDataParams.gamma = gamma;
     essProcessedDataParams.gamma_tau = gamma_tau;
-    essProcessedDataParams.LIdxgZIdx = LIdxgZIdx;
     essProcessedDataParams.cell_mean_power_loss_param = cell_mean_power_loss_param;
     essProcessedDataParams.beta_max_var = beta_max_var;
     essProcessedDataParams.min_alpha_plus_beta = min_alpha_plus_beta;
     essProcessedDataParams.cell_1C_capacityInAh = cell_1C_capacityInAh;
     essProcessedDataParams.cell_nominalVoltage = cell_nominalVoltage;
-    essProcessedDataParams.soc_grid_boundaries = l_grid_boundaries;
     essProcessedDataParams.cell_pow_set = cell_pow_set;
     essProcessedDataParams.slotIntervalInSeconds = slotIntervalInSeconds;
     essProcessedDataParams.SOC_low = cell_SOC_low;
@@ -288,7 +276,7 @@ else
         extreme_prob_fact = essProcessedDataParams.ess_extreme_prob_fact;
         extreme_prob_range_num = essProcessedDataParams.ess_extreme_prob_range_num;
         [progressData, progressDataQueue] = ProgressData('\t\t\tEstimating ESS params : ');
-        incPercent = (1/d_num/l_num)*100;
+        incPercent = (1/d_num/z_num)*100;
         alpha_est_map = nan(z_num,d_num);
         beta_est_map = nan(z_num,d_num);
         P_Zp1gZD_map = zeros(z_num,z_num,d_num);
@@ -301,7 +289,6 @@ else
                 end
                 P_Zp1gZD_map(:,:,d_k_idx) = P_Zp1gZD_map_t;
             else
-                ZIdxsgLIdx_t = ZIdxsgLIdx;
                 soc_grid_bin_mean_t = soc_grid_bin_mean;
                 scaled_soc_grid_boundaries_t = scaled_soc_grid_boundaries;
                 soc_kp1_estimate_3c_fn_ref_t = soc_kp1_estimate_3c_fn_ref;
@@ -309,49 +296,44 @@ else
                 alpha_est_t = nan(z_num,1);
                 beta_est_t = nan(z_num,1);
                 P_Zp1gZD_map_t = zeros(z_num,z_num,1);
-                for l_k_idx = 1:l_num
+                for z_k_idx = 1:z_num
                     power_loss_param = cell_mean_power_loss_param*legsInParallel*cellsInSeries;
+                    soc_k = soc_grid_bin_mean_t(z_k_idx);
+                    [soc_kp1_estimate_3c,action_performed] = soc_kp1_estimate_3c_fn_ref_t(soc_k,power_loss_param,gamma,gamma_tau,bat_pow_set(d_k_idx),z_cap);
+                    if(action_performed)
+                        beta_mean = rescale(soc_kp1_estimate_3c,0,1,'InputMin',cell_SOC_low,'InputMax',cell_SOC_high);
+                        beta_var = min(beta_max_var,beta_mean*(1-beta_mean)/(min_alpha_plus_beta+1));
 
-                    z_k_idxs = ZIdxsgLIdx_t(:,l_k_idx);
-                    for z_k_idx_in_l_k_idx = 1:z_num_per_level
-                        z_k_idx = z_k_idxs(z_k_idx_in_l_k_idx);
-                        soc_k = soc_grid_bin_mean_t(z_k_idx);
-                        [soc_kp1_estimate_3c,action_performed] = soc_kp1_estimate_3c_fn_ref_t(soc_k,power_loss_param,gamma,gamma_tau,bat_pow_set(d_k_idx),z_cap);
-                        if(action_performed)
-                            beta_mean = rescale(soc_kp1_estimate_3c,0,1,'InputMin',cell_SOC_low,'InputMax',cell_SOC_high);
-                            beta_var = min(beta_max_var,beta_mean*(1-beta_mean)/(min_alpha_plus_beta+1));
-
-                            alpha_est = (((1-beta_mean)/beta_var) - (1/beta_mean))*(beta_mean^2);
-                            beta_est = alpha_est*((1/beta_mean) - 1);
-                            P_Zp1 = zeros(z_num,1);
-                            if(isnan(alpha_est) || isnan(beta_est) || alpha_est<0 || beta_est<0)
-                                prim_prob = 1 - (extreme_prob_fact);
-                                sec_prob = (extreme_prob_fact/extreme_prob_range_num);
-                                if(soc_kp1_estimate_3c==cell_SOC_low)
-                                    alpha_est = 0;
-                                    beta_est = 1;
-                                    P_Zp1(1) = prim_prob;
-                                    P_Zp1(2:extreme_prob_range_num) = sec_prob;
-                                elseif(soc_kp1_estimate_3c==cell_SOC_high)
-                                    alpha_est = 1;
-                                    beta_est = 0;
-                                    P_Zp1(z_num) = prim_prob;
-                                    P_Zp1(z_num-extreme_prob_range_num+1:z_num-1) = sec_prob;
-                                else
-                                    error('here beta dist not possible!')
-                                end
+                        alpha_est = (((1-beta_mean)/beta_var) - (1/beta_mean))*(beta_mean^2);
+                        beta_est = alpha_est*((1/beta_mean) - 1);
+                        P_Zp1 = zeros(z_num,1);
+                        if(isnan(alpha_est) || isnan(beta_est) || alpha_est<0 || beta_est<0)
+                            prim_prob = 1 - (extreme_prob_fact);
+                            sec_prob = (extreme_prob_fact/extreme_prob_range_num);
+                            if(soc_kp1_estimate_3c==cell_SOC_low)
+                                alpha_est = 0;
+                                beta_est = 1;
+                                P_Zp1(1) = prim_prob;
+                                P_Zp1(2:extreme_prob_range_num) = sec_prob;
+                            elseif(soc_kp1_estimate_3c==cell_SOC_high)
+                                alpha_est = 1;
+                                beta_est = 0;
+                                P_Zp1(z_num) = prim_prob;
+                                P_Zp1(z_num-extreme_prob_range_num+1:z_num-1) = sec_prob;
                             else
-                                for z_kp1_idx = 1:z_num
-                                    P_Zp1(z_kp1_idx) = betacdf(scaled_soc_grid_boundaries_t(z_kp1_idx+1),alpha_est,beta_est) - betacdf(scaled_soc_grid_boundaries_t(z_kp1_idx),alpha_est,beta_est);
-                                end
+                                error('here beta dist not possible!')
                             end
-
-                            P_Zp1 = P_Zp1/sum(P_Zp1);
-                            P_Zp1 = roundOffInSimplex(P_Zp1,paramsPrecision);
-                            P_Zp1gZD_map_t(:,z_k_idx) = P_Zp1;
-                            alpha_est_t(z_k_idx) = alpha_est;
-                            beta_est_t(z_k_idx) = beta_est;
+                        else
+                            for z_kp1_idx = 1:z_num
+                                P_Zp1(z_kp1_idx) = betacdf(scaled_soc_grid_boundaries_t(z_kp1_idx+1),alpha_est,beta_est) - betacdf(scaled_soc_grid_boundaries_t(z_kp1_idx),alpha_est,beta_est);
+                            end
                         end
+
+                        P_Zp1 = P_Zp1/sum(P_Zp1);
+                        P_Zp1 = roundOffInSimplex(P_Zp1,paramsPrecision);
+                        P_Zp1gZD_map_t(:,z_k_idx) = P_Zp1;
+                        alpha_est_t(z_k_idx) = alpha_est;
+                        beta_est_t(z_k_idx) = beta_est;
                     end
                     send(progressDataQueue, incPercent);
                 end
